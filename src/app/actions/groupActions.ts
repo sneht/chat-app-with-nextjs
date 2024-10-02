@@ -1,9 +1,11 @@
 "use server";
 
-import { createGroup, updateGroupProfilePic } from "@/lib/groupOperations";
-import { z } from "zod";
-import { State } from "@/lib/types";
 import { auth } from "@/auth";
+import { createGroup, updateGroupProfilePic } from "@/lib/groupOperations";
+import { State } from "@/lib/types";
+import { User } from "@prisma/client";
+import { z } from "zod";
+import { ChatformSchema } from "../(auth)/login/validation";
 import prisma from "../../../prisma/prisma";
 
 const createGroupSchema = z.object({
@@ -198,6 +200,58 @@ export async function getRecentMessagesForGroupAction(
     return {
       status: "error",
       message: "Failed to fetch recent messages",
+    };
+  }
+}
+
+export async function sentMessageAction(
+  prevState: State,
+  data: FormData
+): Promise<State> {
+  try {
+    const input = Object.fromEntries(data);
+    const response = ChatformSchema.safeParse(input);
+    if (!response.success) {
+      throw new Error(response.error.errors[0].message);
+    }
+    const session = await auth();
+    const { user } = session || {};
+    const { id: user_id } = (user as User) || {};
+    const { group_id, message } = response.data;
+    console.log("🚀 ~ response.data:", response.data);
+
+    await prisma.message.create({
+      data: {
+        content: message,
+        senderId: user_id,
+        groupId: group_id,
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            profileImage: true,
+          },
+        },
+        group: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return {
+      status: "success",
+      message: "message sent",
+    };
+  } catch (error) {
+    console.log("🚀 ~ error:", error);
+    return {
+      status: "error",
+      message: "something went wrong",
     };
   }
 }

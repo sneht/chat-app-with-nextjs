@@ -39,3 +39,8 @@ export const profileFormSchema = z.object({
   username: z.string().min(1, { message: "User name is required" }),
   profileImage: z.string().optional(),
 });
+
+export const ChatformSchema = z.object({
+  group_id: z.string(),
+  message: z.string(),
+});

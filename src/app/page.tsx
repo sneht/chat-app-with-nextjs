@@ -3,12 +3,10 @@
 import CreateGroupForm from "@/app/components/group/create-group-form";
 import { Group, User } from "@prisma/client";
 import {
-  ArrowLeft,
   ChevronRight,
   LogOut,
   MoreVertical,
   Search,
-  Send,
   Settings,
   User as UserIcon,
   UserPlus,
@@ -16,121 +14,15 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
-import { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  getRecentMessagesForGroupAction,
   getRecentUsersAndGroupsListAction,
   getUsersListAction,
 } from "./actions/groupActions";
+import ChatView from "./components/chat-view/chat-view";
 import { Sidebar } from "./components/sidebar/sidebar";
 import Loading from "./loading";
-
-// Sidebar Component
-
-// ChatView Component
-interface ChatViewProps {
-  chat: Group;
-  onBack: () => void;
-}
-
-function ChatView({ chat, onBack }: ChatViewProps) {
-  const session = useSession();
-  // const { socket } = useContext(SocketContext);
-  const { data } = session || {};
-  const { user } = (data as unknown as { user: User }) || {};
-  const [messages, setMessages] = useState<any[]>([]);
-  const [inputMessage, setInputMessage] = useState("");
-  const [isConnected, setIsConnected] = useState(false);
-  const [transport, setTransport] = useState("N/A");
-
-  // const socketRef = useRef<Socket | null>(null);
-
-  useEffect(() => {
-    const fetchMessages = async () => {
-      const result = await getRecentMessagesForGroupAction(chat.id);
-      if (result) {
-        if (result?.status === "success") {
-          console.log("result.data", result.data);
-          setMessages(result.data);
-        } else {
-          console.log(result.message);
-        }
-      } else {
-        console.log("error while fetching recent message of group");
-      }
-    };
-
-    fetchMessages();
-  }, [chat.id]);
-
-  const sendMessage = () => {
-    if (inputMessage.trim()) {
-      console.log("inputMessage",inputMessage)
-    }
-    // if (inputMessage.trim() && socketRef.current && user) {
-    //   console.log("message emited");
-    //   socketRef.current.emit("sendMessage", {
-    //     groupId: chat.id,
-    //     senderId: user.id,
-    //     content: inputMessage.trim(),
-    //   });
-    //   setInputMessage("");
-    // }
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="bg-gray-200 p-4 flex items-center">
-        <button onClick={onBack} className="mr-2 md:hidden">
-          <ArrowLeft className="h-6 w-6" />
-        </button>
-        <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center mr-4">
-          {chat.name.charAt(0)}
-        </div>
-        <h2 className="font-semibold">{chat.name}</h2>
-      </div>
-      <div className="flex-1 overflow-y-auto p-4">
-        {messages?.map((message) => (
-          <div
-            key={message.id}
-            className={`mb-4 ${
-              message.sender.id === user?.id ? "text-right" : "text-left"
-            }`}
-          >
-            <div
-              className={`inline-block p-2 rounded-lg ${
-                message.sender.id === user?.id
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-200"
-              }`}
-            >
-              <p className="text-xs text-gray-500">{message.sender.username}</p>
-              {message.content}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="p-4 bg-white">
-        <div className="flex">
-          <input
-            type="text"
-            className="flex-1 mr-2 p-2 border rounded"
-            placeholder="Type a message"
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && sendMessage()}
-          />
-          <button
-            className="bg-blue-500 text-white p-2 rounded"
-            onClick={sendMessage}
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { socket, connectSocket, disconnectSocket } from "@/socket";
 
 interface DropdownMenuProps {
   onCreateGroup: () => void;
@@ -347,7 +239,9 @@ function CreateGroupModal({
 // Main App Component
 export default function Home() {
   const session = useSession();
-  const { status } = session || {};
+  const { status, data } = session || {};
+  const { user } = data || {};
+  const { username, id: user_id } = (user as unknown as User) || {};
   const [selectedChat, setSelectedChat] = useState<Group | null>(null);
   const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -392,6 +286,12 @@ export default function Home() {
   }, []);
 
   const handleSelectChat = (chat: Group) => {
+    if (socket.connected) {
+      socket.emit("join_room", {
+        user_id,
+        group_id: chat.id,
+      });
+    }
     setSelectedChat(chat);
   };
 
@@ -402,6 +302,30 @@ export default function Home() {
   const handleCreateGroup = () => {
     setIsCreateGroupModalOpen(true);
   };
+
+  useEffect(() => {
+    // Connect the socket when the component mounts
+    connectSocket();
+
+    // Check the connection status
+    const checkConnection = () => {
+      if (socket.connected) {
+        console.log("Socket connected");
+      } else {
+        console.log("Socket not connected");
+      }
+    };
+
+    // Check connection immediately and set up an interval to check periodically
+    checkConnection();
+    const intervalId = setInterval(checkConnection, 5000);
+
+    // Disconnect the socket when the component unmounts
+    return () => {
+      clearInterval(intervalId);
+      disconnectSocket();
+    };
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-100">
